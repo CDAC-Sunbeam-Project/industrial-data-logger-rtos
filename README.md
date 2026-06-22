@@ -43,6 +43,6 @@ Project setup in progress
 ## ✅ Project Progress
 - [x] UART debug communication established
 - [x] PIR Motion Sensor (HC-SR501) interfaced via PA2
-- [ ] DHT22 Temperature Sensor (In progress)
+- [ ] BMP280 Temperature Sensor (In progress)
 - [ ] MQ-135 Gas Sensor (Pending)
 - [ ] SD Card Logging (Pending)
