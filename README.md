@@ -24,6 +24,7 @@ Sensor → ADC → STM32 → Queue → Logging Task / UART Task
 ## 🔌 Protocols Used
 
 * UART (PC communication)
+* I2C (Sensor Communication)
 * SPI (SD card)
 * ADC (data acquisition)
 
