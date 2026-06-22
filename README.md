@@ -41,7 +41,7 @@ Sensor → ADC → STM32 → Queue → Logging Task / UART Task
 ##   Status
 
 Project setup in progress
-## ✅ Project Progress
+## Project Progress
 - [x] UART debug communication established
 - [x] PIR Motion Sensor (HC-SR501) interfaced via PA2
 - [ ] BMP280 Temperature Sensor (In progress)
