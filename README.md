@@ -1,12 +1,12 @@
 # Industrial Data Logger Using RTOS (STM32)
 
-## 📌 Overview
+##  Overview
 
 This project implements a real-time industrial data logging system using STM32 and FreeRTOS. It reads analog sensor data using ADC, logs it into an SD card using SPI, and transmits data to a PC via UART.
 
 ---
 
-## ⚙️ Features
+##   Features
 
 * Real-time data acquisition (ADC)
 * Multitasking using FreeRTOS
@@ -15,13 +15,13 @@ This project implements a real-time industrial data logging system using STM32 a
 
 ---
 
-## 🔄 System Flow
+##   System Flow
 
 Sensor → ADC → STM32 → Queue → Logging Task / UART Task
 
 ---
 
-## 🔌 Protocols Used
+##   Protocols Used
 
 * UART (PC communication)
 * I2C (Sensor Communication)
@@ -30,7 +30,7 @@ Sensor → ADC → STM32 → Queue → Logging Task / UART Task
 
 ---
 
-## 📂 Project Structure (To be added)
+##   Project Structure (To be added)
 
 * docs/
 * code/
@@ -38,7 +38,7 @@ Sensor → ADC → STM32 → Queue → Logging Task / UART Task
 
 ---
 
-## 🚧 Status
+##   Status
 
 Project setup in progress
 ## ✅ Project Progress
