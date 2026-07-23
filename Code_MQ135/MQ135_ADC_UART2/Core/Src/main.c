@@ -50,7 +50,9 @@ uint32_t adcValue = 0;
 float voltage = 0.0;
 
 char txBuffer[100];
+char msg[100];
 /* USER CODE END PV */
+
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -104,7 +106,9 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
+  {uint32_t adcValue;
+  float voltage;
+  char msg[100];
 	  HAL_ADC_Start(&hadc1);
 
 	        HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
