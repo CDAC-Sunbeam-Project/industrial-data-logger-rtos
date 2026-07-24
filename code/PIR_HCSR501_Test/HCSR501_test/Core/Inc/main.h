@@ -55,11 +55,14 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void SystemClock_Config(void);
 
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define PIR_IN_Pin GPIO_PIN_2
+#define PIR_IN_GPIO_Port GPIOC
+#define Buzzer_Pin GPIO_PIN_0
+#define Buzzer_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 #define LED_GREEN_PIN GPIO_PIN_12
