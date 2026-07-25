@@ -24,7 +24,6 @@
 /* USER CODE BEGIN Includes */
 #include "shared_data.h"
 #include "pir_sensor.h"
-#include "bme280_sensor.h"
 #include <stdio.h>
 
 /* USER CODE END Includes */
@@ -92,7 +91,7 @@ int _write(int file, char *ptr, int len)
 /* ═══════════════════════════════════════════════════════════
    Alert_Task
    Highest priority — wakes INSTANTLY on any event flag
-   Handles buzzer, LED alerts for all sensors
+   Handles PIR motion alerts
 ═══════════════════════════════════════════════════════════ */
 
 void Alert_Task(void *argument)
@@ -108,15 +107,15 @@ void Alert_Task(void *argument)
          * When PIR or BME280 calls osEventFlagsSet(),
          * this task wakes in microseconds.
          */
-        uint32_t flags = osEventFlagsWait(
-            alertFlagsHandle,
-            EVT_MOTION_DETECTED | EVT_ZONE_CLEARED  |
-            EVT_FIRE_ALERT      | EVT_TEMP_ALERT    |
-            EVT_HUMIDITY_ALERT  | EVT_GAS_ALERT     |
-            EVT_OVERCURRENT,
-            osFlagsWaitAny,
-            osWaitForever
-        );
+     uint32_t flags = osEventFlagsWait(
+       alertFlagsHandle,
+       EVT_MOTION_DETECTED | EVT_ZONE_CLEARED  |
+       EVT_FIRE_ALERT      | EVT_TEMP_ALERT    |
+       EVT_HUMIDITY_ALERT  | EVT_GAS_ALERT     |
+       EVT_OVERCURRENT,
+       osFlagsWaitAny,
+       osWaitForever
+);
 
         /* Snapshot shared data — fast mutex hold */
                 osMutexAcquire(dataMutexHandle, 100);
@@ -124,34 +123,9 @@ void Alert_Task(void *argument)
                 osMutexRelease(dataMutexHandle);
 
                 /* Handle each flag — priority order matters */
-                if (flags & EVT_FIRE_ALERT)
-                {
-                    printf("[ALERT] *** FIRE DETECTED ***\r\n");
-                    for (uint8_t i = 0; i < 5; i++)
-                    {
-                        HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                          BUZZER_Pin, GPIO_PIN_SET);
-                        osDelay(200);
-                        HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                          BUZZER_Pin, GPIO_PIN_RESET);
-                        osDelay(100);
-                    }
-                }
+               
 
-                if (flags & EVT_TEMP_ALERT)
-                      {
-                          printf("[ALERT] TEMP: %.1fC (limit %.0fC)\r\n",
-                                 snap.bme.temperature, TEMP_MAX_C);
-                          for (uint8_t i = 0; i < 3; i++)
-                          {
-                              HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                                BUZZER_Pin, GPIO_PIN_SET);
-                              osDelay(300);
-                              HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                                BUZZER_Pin, GPIO_PIN_RESET);
-                              osDelay(100);
-                          }
-                      }
+               
                         if (flags & EVT_MOTION_DETECTED)
                         {
                             printf("[ALERT] Motion event #%lu\r\n",
@@ -219,7 +193,7 @@ int main(void)
       printf("================================================\r\n");
       printf("  INDUSTRIAL SERVER ROOM MONITOR\r\n");
       printf("  STM32F407 + FreeRTOS\r\n");
-      printf("  Sensors: PIR + BME280\r\n");
+      printf("  Sensors: PIR\r\n");
       printf("================================================\r\n\n");
 
 
@@ -228,20 +202,10 @@ int main(void)
       /* Init sensors before scheduler starts */
          PIR_Init();
 
-//         if (!BME280_Init())
-//         {
-//             printf("[MAIN] FATAL: BME280 not found\r\n");
-//             printf("[MAIN] Check I2C wiring: PB6=SCL PB7=SDA\r\n");
-//             printf("[MAIN] Check address: SDO low=0x76 high=0x77\r\n");
-//             Error_Handler();
-//         }
 
 
 
-         if (!BME280_Init())
-         {
-             printf("[MAIN] BME280 not found - continuing without it\r\n");
-         }
+        
          /* FreeRTOS kernel init */
          osKernelInitialize();
 
@@ -291,12 +255,7 @@ int main(void)
                        .stack_size = 512
                    });
 
-               osThreadNew(BME280_Task, NULL,
-                   &(osThreadAttr_t){
-                       .name       = "BME280",
-                       .priority   = osPriorityAboveNormal,
-                       .stack_size = 1024
-                   });
+            
 
                printf("[MAIN] Tasks created\r\n");
                printf("[MAIN] Starting FreeRTOS scheduler...\r\n\n");
