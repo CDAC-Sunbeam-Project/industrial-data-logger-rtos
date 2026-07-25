@@ -1,55 +1,41 @@
-# Prerequisites
-*.d
+# CubeIDE workspace
+**/.metadata/
+**/.settings/
+**/.project
+**/.cproject
+**/*.launch
+**/.mxproject
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+# Build outputs
+**/Debug/
+**/Release/
+**/*.o
+**/*.d
+**/*.su
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.map
+**/*.lst
+**/*.cyclo
+**/*.a
+**/makefile
+**/objects.mk
+**/objects.list
+**/sources.mk
+**/subdir.mk
 
-# Linker output
-*.ilk
-*.map
-*.exp
+# Logs
+**/*.log
+**/*.log4j2.xml
+**/*.lock
+**/*.ini
 
-# Precompiled Headers
-*.gch
-*.pch
+# Archives and local only
+archive/
+/industrial_data_logger/
+/code/
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+# OS
+.DS_Store
+Thumbs.db
