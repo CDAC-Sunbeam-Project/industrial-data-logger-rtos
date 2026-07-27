@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "shared_data.h"
 #include "pir_sensor.h"
+#include "bme280_sensor.h"
 #include <stdio.h>
 
 /* USER CODE END Includes */
@@ -137,6 +138,20 @@ void Alert_Task(void *argument)
                                               BUZZER_Pin, GPIO_PIN_RESET);
                         }
 
+                        if (flags & EVT_TEMP_ALERT)
+                        {
+                            printf("[ALERT] High temperature!\r\n");
+                            /* beep twice */
+                            for (int i = 0; i < 2; i++)
+                            {
+                                HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+                                osDelay(200);
+                                HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+                                osDelay(200);
+                            }
+                        }
+
+
                         if (flags & EVT_ZONE_CLEARED)
                                {
                                    printf("[ALERT] Zone secure\r\n");
@@ -193,7 +208,7 @@ int main(void)
       printf("================================================\r\n");
       printf("  INDUSTRIAL SERVER ROOM MONITOR\r\n");
       printf("  STM32F407 + FreeRTOS\r\n");
-      printf("  Sensors: PIR\r\n");
+      printf("  Sensors: PIR + BME280\r\n");
       printf("================================================\r\n\n");
 
 
@@ -201,6 +216,9 @@ int main(void)
 
       /* Init sensors before scheduler starts */
          PIR_Init();
+         BME280_ReadCalibration();
+         BME280_Init();
+
 
 
 
@@ -255,6 +273,12 @@ int main(void)
                        .stack_size = 512
                    });
 
+               osThreadNew(BME_Task, NULL, &(osThreadAttr_t)
+               {
+            	   .name = "BME",
+            	   .priority = osPriorityAboveNormal,
+				   .stack_size = 1024
+               });
             
 
                printf("[MAIN] Tasks created\r\n");

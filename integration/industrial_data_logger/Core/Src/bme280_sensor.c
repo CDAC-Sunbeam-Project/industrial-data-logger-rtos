@@ -6,10 +6,14 @@
  */
 
 #include "bme280_sensor.h"
+#include "shared_data.h"
 #include <stdio.h>
 
 /* I2C handle declared by CubeMX in main.c */
 extern I2C_HandleTypeDef hi2c1;
+
+extern osMutexId_t          dataMutexHandle;
+extern osEventFlagsId_t     alertFlagsHandle;
 
 /* ── Private calibration variables ───────────────────────────
  * static = invisible outside this file
