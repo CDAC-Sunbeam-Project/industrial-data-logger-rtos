@@ -17,7 +17,7 @@
 
 /* Public API */
 uint8_t BME280_Init(void);
-void BME280_ReadCalibration(void);
+uint8_t BME280_ReadCalibration(void);
 BME280_Data_t BME280_ReadData(void);
 void BME280_Task(void *argument);
 

@@ -30,7 +30,7 @@ static int8_t   dig_H6;
 
 /* ── Private function declarations ─────────────────────────── */
 static uint8_t bme280_check_id(void);
-static uint8_t bme280_read_calibration(void);
+//static uint8_t bme280_read_calibration(void);
 static float   bme280_compensate_temp(int32_t adc_T,
                                        int32_t *t_fine);
 static float   bme280_compensate_pressure(int32_t adc_P,
@@ -71,7 +71,7 @@ static uint8_t bme280_check_id(void)
    Each sensor has unique correction values from factory
    Must be read before any temperature/pressure/humidity calc
 ═══════════════════════════════════════════════════════════ */
-static uint8_t bme280_read_calibration(void)
+uint8_t bme280_read_calibration(void)
 {
     uint8_t c1[26] = {0};
     uint8_t c2[7]  = {0};

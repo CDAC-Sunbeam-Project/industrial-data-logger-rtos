@@ -81,6 +81,7 @@ extern osEventFlagsId_t  alertFlagsHandle;
 #define EVT_GAS_ALERT          (1UL << 5)
 #define EVT_OVERCURRENT        (1UL << 6)
 
+
 /* ── Thresholds ───────────────────────────────────────────── */
 #define TEMP_MAX_C             40.0f
 #define TEMP_MIN_C              0.0f

@@ -25,7 +25,9 @@
 #include "shared_data.h"
 #include "pir_sensor.h"
 #include "bme280_sensor.h"
+#include "mq135_sensor.h"
 #include <stdio.h>
+#include "usart.h"
 
 /* USER CODE END Includes */
 
@@ -45,6 +47,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
@@ -69,7 +73,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_ADC1_Init(void);
 void StartDefaultTask(void *argument);
+void UART_Send(char *msg);
+
 
 /* USER CODE BEGIN PFP */
 
@@ -98,6 +105,9 @@ int _write(int file, char *ptr, int len)
 void Alert_Task(void *argument)
 {
     printf("[ALERT] Task started — waiting for events\r\n\n");
+    uint32_t flags;      // <-- ADD THIS
+    SystemData_t snap;   // <-- ADD THIS
+
 
     for (;;)
     {
@@ -156,9 +166,29 @@ void Alert_Task(void *argument)
                                {
                                    printf("[ALERT] Zone secure\r\n");
                                }
-                           }
-                       }
+    	}
 
+
+
+
+					/* ============================================================
+					 	 	 	 	 * MQ135 GAS ALERT
+					* ============================================================ */
+// Handle Gas Alert
+if(flags & EVT_GAS_ALERT)
+	{
+	char msg[256];
+	sprintf(msg, "[ALERT] 🚨 GAS DETECTED! PPM: %.1f\r\n", snap.mq135.ppm);
+	UART_Send(msg);
+	for (int i = 0; i < 3; i++)
+	{
+		HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+		osDelay(300);
+		HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+		osDelay(200);
+	}
+	}
+}
 
 
 /* USER CODE END 0 */
@@ -194,6 +224,7 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_USART2_UART_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
   /* Test buzzer */
@@ -216,7 +247,7 @@ int main(void)
 
       /* Init sensors before scheduler starts */
          PIR_Init();
-         BME280_ReadCalibration();
+       //  BME280_ReadCalibration();
          BME280_Init();
 
 
@@ -273,13 +304,21 @@ int main(void)
                        .stack_size = 512
                    });
 
-               osThreadNew(BME_Task, NULL, &(osThreadAttr_t)
+               osThreadNew(BME280_Task, NULL, &(osThreadAttr_t)
                {
             	   .name = "BME",
             	   .priority = osPriorityAboveNormal,
 				   .stack_size = 1024
                });
             
+
+               /* MQ135 Task - Normal Priority (YOUR SENSOR) */
+               osThreadNew(MQ135_Task, NULL,&(osThreadAttr_t){
+                       .name       = "MQ135",
+                       .priority   = osPriorityNormal,
+                       .stack_size = 1024
+                   });
+
 
                printf("[MAIN] Tasks created\r\n");
                printf("[MAIN] Starting FreeRTOS scheduler...\r\n\n");
@@ -290,54 +329,53 @@ int main(void)
                /* Never reached */
                   while (1) {}
   /* USER CODE END 2 */
-}
 
-//  /* Init scheduler */
-//  osKernelInitialize();
-//
-//  /* USER CODE BEGIN RTOS_MUTEX */
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
 //  /* add mutexes, ... */
-//  /* USER CODE END RTOS_MUTEX */
-//
-//  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
 //  /* add semaphores, ... */
-//  /* USER CODE END RTOS_SEMAPHORES */
-//
-//  /* USER CODE BEGIN RTOS_TIMERS */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
 //  /* start timers, add new ones, ... */
-//  /* USER CODE END RTOS_TIMERS */
-//
-//  /* USER CODE BEGIN RTOS_QUEUES */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
 //  /* add queues, ... */
-//  /* USER CODE END RTOS_QUEUES */
-//
-//  /* Create the thread(s) */
-//  /* creation of defaultTask */
-//  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-//
-//  /* USER CODE BEGIN RTOS_THREADS */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
 //  /* add threads, ... */
-//  /* USER CODE END RTOS_THREADS */
-//
-//  /* USER CODE BEGIN RTOS_EVENTS */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
 //  /* add events, ... */
-//  /* USER CODE END RTOS_EVENTS */
-//
-//  /* Start scheduler */
-//  osKernelStart();
-//
-//  /* We should never get here as control is now taken by the scheduler */
-//
-//  /* Infinite loop */
-//  /* USER CODE BEGIN WHILE */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 //  while (1)
 //  {
-//    /* USER CODE END WHILE */
-//
-//    /* USER CODE BEGIN 3 */
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
 //  }
-//  /* USER CODE END 3 */
-//}
+  /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
@@ -383,6 +421,58 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -475,7 +565,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LED_GREEN_Pin|LED_RED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PIR_IN_Pin */
   GPIO_InitStruct.Pin = PIR_IN_Pin;
@@ -490,8 +580,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(BUZZER_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LED_GREEN_Pin LED_RED_Pin */
-  GPIO_InitStruct.Pin = LED_GREEN_Pin|LED_RED_Pin;
+  /*Configure GPIO pins : LED_GREEN_Pin LED_ORANGE_Pin LED_RED_Pin */
+  GPIO_InitStruct.Pin = LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
