@@ -58,6 +58,7 @@ current draw, and fire detection with instant alerts.
 - feature/pir — PIR individual development
 - feature/bme280 — BME280 individual development
 - Feature/MQ135 — MQ135 individual development
+- feature/ina219 — INA219 individual development
 
 ## Team
 | Member | Contribution |
