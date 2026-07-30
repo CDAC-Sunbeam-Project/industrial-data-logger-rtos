@@ -216,7 +216,11 @@ int main(void)
 
       /* Init sensors before scheduler starts */
          PIR_Init();
-         BME280_ReadCalibration();
+         if (!BME280_Init())
+         {
+             printf("[MAIN] BME280 initialization failed\r\n");
+             Error_Handler();
+         }
          BME280_Init();
 
 
@@ -273,7 +277,7 @@ int main(void)
                        .stack_size = 512
                    });
 
-               osThreadNew(BME_Task, NULL, &(osThreadAttr_t)
+               osThreadNew(BME280_Task, NULL, &(osThreadAttr_t)
                {
             	   .name = "BME",
             	   .priority = osPriorityAboveNormal,
