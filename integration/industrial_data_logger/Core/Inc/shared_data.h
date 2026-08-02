@@ -81,7 +81,6 @@ extern osEventFlagsId_t  alertFlagsHandle;
 #define EVT_GAS_ALERT          (1UL << 5)
 #define EVT_OVERCURRENT        (1UL << 6)
 
-
 /* ── Thresholds ───────────────────────────────────────────── */
 #define TEMP_MAX_C             40.0f
 #define TEMP_MIN_C              0.0f
@@ -95,10 +94,5 @@ extern osEventFlagsId_t  alertFlagsHandle;
 #define PIR_DEBOUNCE_MS           50UL
 #define PIR_RECHECK_MS        120000UL
 #define PIR_POLL_MS               50UL
-
-extern float Voltage;
-extern float Current;
-extern float Power;
-
 
 #endif /* INC_SHARED_DATA_H_ */
