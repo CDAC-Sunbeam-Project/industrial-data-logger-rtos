@@ -36,7 +36,6 @@ static void pir_buzzer_beep(uint8_t count, uint32_t duration_ms)
 ═══════════════════════════════════════════════════════════ */
 void PIR_Init(void)
 {
-	printf("PIR Task Started\r\n");
     /* GPIO configured by CubeMX:
        PC2 → GPIO_Input, Pull-down  (PIR_IN)
        PB0 → GPIO_Output, Push-Pull (BUZZER) */

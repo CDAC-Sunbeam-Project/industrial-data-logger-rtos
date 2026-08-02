@@ -27,7 +27,6 @@ current draw, and fire detection with instant alerts.
 |------|----------|-------|----------|
 | Alert_Task | Realtime | 512B | Buzzer alerts on event flags |
 | PIR_Task | High | 512B | Edge detect, zone tracking |
-| MQ135_Task | High | 1024B | Gas Detect, Buzzer Alert on high gas |
 | BME280_Task | Above Normal | 1024B | Temp/humidity/pressure |
 | Logger_Task | Normal | 2048B | SD card CSV logging |
 
