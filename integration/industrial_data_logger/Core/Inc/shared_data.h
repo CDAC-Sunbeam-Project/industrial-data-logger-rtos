@@ -96,4 +96,9 @@ extern osEventFlagsId_t  alertFlagsHandle;
 #define PIR_RECHECK_MS        120000UL
 #define PIR_POLL_MS               50UL
 
+extern float Voltage;
+extern float Current;
+extern float Power;
+
+
 #endif /* INC_SHARED_DATA_H_ */

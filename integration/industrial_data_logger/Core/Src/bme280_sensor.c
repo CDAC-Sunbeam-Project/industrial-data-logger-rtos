@@ -216,6 +216,7 @@ static uint8_t bme280_read_raw(float *temp,
 ═══════════════════════════════════════════════════════════ */
 uint8_t BME280_Init(void)
 {
+	printf("BME280 Task Started\r\n");
     if (!bme280_check_id())          return 0;
     if (!bme280_read_calibration())  return 0;
 

@@ -36,23 +36,68 @@ static void UART_Send(const char* str)
     HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 1000);
 }
 
-static void MQ135_PrintStatus(uint32_t adcValue, float voltage, float ppm, uint8_t level)
-{
-    char msg[1024];
-    const char *levelText[] = {"🟢 LOW", "🟠 MEDIUM", "🔴 HIGH"};
 
-    sprintf(msg, "\r\n╔═══════════════════════════════════════════════╗\r\n"
-                 "║     MQ135 Gas Sensor Report                   ║\r\n"
-                 "╠═══════════════════════════════════════════════╣\r\n"
-                 "║  ADC Value  : %4lu                            ║\r\n"
-                 "║  Voltage    : %.2f V                         ║\r\n"
-                 "║  PPM        : %.1f                           ║\r\n"
-                 "║  Status     : %s                             ║\r\n"
-                 "╚═══════════════════════════════════════════════╝\r\n",
-                 (unsigned long)adcValue, voltage, ppm, levelText[level]);
+/* ============================================================
+ * MQ135 Initialization Function
+ * ============================================================ */
+void MQ135_Init(void)
+{
+	printf("MQ135 Task Started\r\n");
+    char msg[128];
+
+    UART_Send("\r\n[MQ135] Initializing...\r\n");
+
+    /* Start ADC */
+    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    {
+        UART_Send("[MQ135] ERROR: ADC Start Failed!\r\n");
+        return;
+    }
+
+    /* Perform one conversion */
+    if (HAL_ADC_PollForConversion(&hadc1, 100) != HAL_OK)
+    {
+        UART_Send("[MQ135] ERROR: ADC Conversion Failed!\r\n");
+        HAL_ADC_Stop(&hadc1);
+        return;
+    }
+
+    /* Read ADC Value */
+    adcValue = HAL_ADC_GetValue(&hadc1);
+
+    /* Stop ADC */
+    HAL_ADC_Stop(&hadc1);
+
+    sprintf(msg,
+            "[MQ135] ADC Test OK. Initial ADC = %lu\r\n",
+            (unsigned long)adcValue);
 
     UART_Send(msg);
+
+    UART_Send("[MQ135] Initialization Complete\r\n");
 }
+
+//static void MQ135_PrintStatus(uint32_t adcValue, float voltage, float ppm, uint8_t level)
+//{
+  //  char msg[1024];
+    //const char *levelText[] = {"🟢 LOW", "🟠 MEDIUM", "🔴 HIGH"};
+//
+//    sprintf(msg, "\r\n╔═══════════════════════════════════════════════╗\r\n"
+//                 "║     MQ135 Gas Sensor Report                   ║\r\n"
+//                 "╠═══════════════════════════════════════════════╣\r\n"
+//                 "║  ADC Value  : %4lu                            ║\r\n"
+//                 "║  Voltage    : %.2f V                         ║\r\n"
+//                 "║  PPM        : %.1f                           ║\r\n"
+//                 "║  Status     : %s                             ║\r\n"
+//                 "╚═══════════════════════════════════════════════╝\r\n",
+//    printf("[MQ135] ADC=%lu\r\n", adcValue);
+//    printf("[MQ135] Voltage=%.2f\r\n", voltage);
+//    printf("[MQ135] PPM=%.1f\r\n", ppm);
+    static void MQ135_PrintStatus(uint32_t adcValue,float voltage,float ppm,uint8_t level)
+    {
+        printf("[MQ135] Voltage=%.2f PPM=%.1f Level=%d\r\n",voltage, ppm,level);
+    }
+
 
 /**
  * @brief MQ135 FreeRTOS Task - Complete Implementation
@@ -66,6 +111,11 @@ void MQ135_Task(void *argument)
     char startMsg[] = "\r\n----------------------------------------\r\n"
                       "  🚀 MQ135 Gas Sensor - MONITORING \r\n"
                       "----------------------------------------\r\n";
+    printf("Before Delay\r\n");
+
+    osDelay(1000);
+
+    printf("After Delay\r\n");
     HAL_UART_Transmit(&huart2, (uint8_t *)startMsg, strlen(startMsg), HAL_MAX_DELAY);
 
     for (;;)
@@ -79,7 +129,7 @@ void MQ135_Task(void *argument)
             continue;
         }
 
-        adcValue = HAL_ADC_GetValue(&hadc1);
+        //adcValue = HAL_ADC_GetValue(&hadc1);
 
         /* STEP 2: Convert ADC to Voltage */
         voltage = ((float)adcValue * 3.3f) / 4095.0f;

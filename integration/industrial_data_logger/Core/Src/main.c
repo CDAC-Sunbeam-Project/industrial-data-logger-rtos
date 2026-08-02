@@ -26,6 +26,7 @@
 #include "pir_sensor.h"
 #include "bme280_sensor.h"
 #include "mq135_sensor.h"
+#include "ina219_sensor.h"
 #include <stdio.h>
 #include "usart.h"
 
@@ -75,16 +76,20 @@ static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 void StartDefaultTask(void *argument);
-void UART_Send(char *msg);
-
 
 /* USER CODE BEGIN PFP */
+void UART_Send(char *msg)
+{
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+}
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+float Voltage = 0.0f;
+float Current = 0.0f;
+float Power = 0.0f;
 /* USER CODE END PV */
 
 /* USER CODE BEGIN 0 */
@@ -105,8 +110,8 @@ int _write(int file, char *ptr, int len)
 void Alert_Task(void *argument)
 {
     printf("[ALERT] Task started — waiting for events\r\n\n");
-    uint32_t flags;      // <-- ADD THIS
-    SystemData_t snap;   // <-- ADD THIS
+//    uint32_t flags;
+//    SystemData_t snap;
 
 
     for (;;)
@@ -147,48 +152,31 @@ void Alert_Task(void *argument)
                             HAL_GPIO_WritePin(BUZZER_GPIO_Port,
                                               BUZZER_Pin, GPIO_PIN_RESET);
                         }
+                        /* Handle Gas Alert */
+                                if (flags & EVT_GAS_ALERT)
+                                {
+                                    char msg[256];
+                                    sprintf(msg, "[ALERT] 🚨 GAS DETECTED! PPM: %.1f\r\n", snap.mq135.ppm);
+                                    UART_Send(msg);
+                                    for (int i = 0; i < 3; i++)
+                                    {
+                                        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+                                        osDelay(300);
+                                        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+                                        osDelay(200);
+                                    }
+                                }
 
-                        if (flags & EVT_TEMP_ALERT)
-                        {
-                            printf("[ALERT] High temperature!\r\n");
-                            /* beep twice */
-                            for (int i = 0; i < 2; i++)
-                            {
-                                HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-                                osDelay(200);
-                                HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-                                osDelay(200);
+                                /* Handle Zone Cleared */
+                                if (flags & EVT_ZONE_CLEARED)
+                                {
+                                    printf("[ALERT] Zone secure\r\n");
+                                }
                             }
                         }
 
 
-                        if (flags & EVT_ZONE_CLEARED)
-                               {
-                                   printf("[ALERT] Zone secure\r\n");
-                               }
-    	}
 
-
-
-
-					/* ============================================================
-					 	 	 	 	 * MQ135 GAS ALERT
-					* ============================================================ */
-// Handle Gas Alert
-if(flags & EVT_GAS_ALERT)
-	{
-	char msg[256];
-	sprintf(msg, "[ALERT] 🚨 GAS DETECTED! PPM: %.1f\r\n", snap.mq135.ppm);
-	UART_Send(msg);
-	for (int i = 0; i < 3; i++)
-	{
-		HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-		osDelay(300);
-		HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-		osDelay(200);
-	}
-	}
-}
 
 
 /* USER CODE END 0 */
@@ -239,7 +227,7 @@ int main(void)
       printf("================================================\r\n");
       printf("  INDUSTRIAL SERVER ROOM MONITOR\r\n");
       printf("  STM32F407 + FreeRTOS\r\n");
-      printf("  Sensors: PIR + BME280\r\n");
+      printf("  Sensors: PIR + BME280 + MQ135 \r\n");
       printf("================================================\r\n\n");
 
 
@@ -250,7 +238,9 @@ int main(void)
        //  BME280_ReadCalibration();
          BME280_Init();
 
+         MQ135_Init();
 
+         INA219_Init();
 
 
 
@@ -290,12 +280,12 @@ int main(void)
                  *   F407 has 192KB RAM — plenty of headroom
                  */
 
-            osThreadNew(Alert_Task, NULL,
-                   &(osThreadAttr_t){
-                       .name       = "Alert",
-                       .priority   = osPriorityRealtime,
-                       .stack_size = 512
-                   });
+//            osThreadNew(Alert_Task, NULL,
+//                   &(osThreadAttr_t){
+//                       .name       = "Alert",
+//                       .priority   = osPriorityRealtime,
+//                       .stack_size = 512
+//                   });
 
                osThreadNew(PIR_Task, NULL,
                    &(osThreadAttr_t){
@@ -311,14 +301,12 @@ int main(void)
 				   .stack_size = 1024
                });
             
-
-               /* MQ135 Task - Normal Priority (YOUR SENSOR) */
-               osThreadNew(MQ135_Task, NULL,&(osThreadAttr_t){
-                       .name       = "MQ135",
-                       .priority   = osPriorityNormal,
-                       .stack_size = 1024
-                   });
-
+               osThreadNew(MQ135_Task, NULL, &(osThreadAttr_t)
+               {
+            	   .name = "MQ135",
+                   .priority = osPriorityNormal,
+              	   .stack_size = 1024
+                });
 
                printf("[MAIN] Tasks created\r\n");
                printf("[MAIN] Starting FreeRTOS scheduler...\r\n\n");
@@ -555,8 +543,8 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();

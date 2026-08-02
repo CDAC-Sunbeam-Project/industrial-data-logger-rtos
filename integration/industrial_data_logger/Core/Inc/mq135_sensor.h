@@ -9,5 +9,8 @@
 #define INC_MQ135_SENSOR_H_
 
 void MQ135_Task(void *argument);
+void MQ135_Init(void);
+
+
 
 #endif /* INC_MQ135_SENSOR_H_ */
