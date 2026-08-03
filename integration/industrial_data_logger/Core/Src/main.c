@@ -26,7 +26,9 @@
 #include "pir_sensor.h"
 #include "bme280_sensor.h"
 #include "mq135_sensor.h"
+#include "ina219_sensor.h"
 #include <stdio.h>
+
 
 
 /* USER CODE END Includes */
@@ -227,6 +229,7 @@ int main(void)
       printf("  INDUSTRIAL SERVER ROOM MONITOR\r\n");
       printf("  STM32F407 + FreeRTOS\r\n");
       printf("  Sensors: PIR + BME280 + MQ135 \r\n");
+      printf("  Sensors : PIR + BME280 + MQ135 + INA219 \r\n");
       printf("================================================\r\n\n");
 
 
@@ -238,6 +241,9 @@ int main(void)
          BME280_Init();
 
          MQ135_Init();
+
+      //Initialize the INA219 Sensor
+         INA219_Init();
 
 
 
@@ -306,6 +312,14 @@ int main(void)
                    .priority = osPriorityNormal,
               	   .stack_size = 1024
                 });
+
+               osThreadNew(INA219_Task, NULL, &(osThreadAttr_t)
+               {
+            	   .name = "INA219",
+            	   .priority = osPriorityNormal,
+				   .stack_size = 1024
+               });
+
 
                printf("[MAIN] Tasks created\r\n");
                printf("[MAIN] Starting FreeRTOS scheduler...\r\n\n");
@@ -542,8 +556,8 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
