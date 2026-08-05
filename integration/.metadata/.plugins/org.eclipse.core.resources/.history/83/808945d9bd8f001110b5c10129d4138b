@@ -1,0 +1,147 @@
+/*
+ * ina219_sensor.c
+ *
+ *  Created on: 31-Jul-2026
+ *  Author: sunbeam
+ */
+
+#include "ina219_sensor.h"
+#include <stdio.h>
+#include <string.h>
+#include "main.h"
+#include <stdint.h>
+#include "cmsis_os.h"
+#include<shared_data.h>
+
+
+/* External references */
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
+extern float Voltage;
+extern float Current;
+extern float Power;
+
+/* Private function prototypes */
+static float INA219_GetBusVoltage(void);
+static float INA219_GetCurrent(void);
+static float INA219_GetPower(void);
+static uint16_t INA219_ReadRegister(uint8_t reg);
+static void INA219_WriteRegister(uint8_t reg, uint16_t value);
+static void INA219_PrintStatus(void);
+
+/* ============================================================
+   INA219 Register Read/Write Functions
+   ============================================================ */
+
+static uint16_t INA219_ReadRegister(uint8_t reg)
+{
+    uint8_t data[2];
+    uint16_t value;
+
+    HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR, reg, I2C_MEMADD_SIZE_8BIT, data, 2, HAL_MAX_DELAY);
+    value = (data[0] << 8) | data[1];
+    return value;
+}
+
+static void INA219_WriteRegister(uint8_t reg, uint16_t value)
+{
+    uint8_t data[2];
+    data[0] = value >> 8;
+    data[1] = value & 0xFF;
+    HAL_I2C_Mem_Write(&hi2c1, INA219_ADDR, reg, I2C_MEMADD_SIZE_8BIT, data, 2, HAL_MAX_DELAY);
+}
+
+/* ============================================================
+   INA219 Read Functions
+   ============================================================ */
+
+static float INA219_GetBusVoltage(void)
+{
+    uint16_t value;
+    value = INA219_ReadRegister(INA219_REG_BUS);
+    value >>= 3;
+    return value * 0.004f;  // 4mV per bit
+}
+
+static float INA219_GetCurrent(void)
+{
+    int16_t value;
+    value = (int16_t)INA219_ReadRegister(INA219_REG_CURRENT);
+    return value * 0.1f;    // 0.1mA per bit
+}
+
+static float INA219_GetPower(void)
+{
+    uint16_t value;
+    value = INA219_ReadRegister(INA219_REG_POWER);
+    return value * 2.0f;    // 2mW per bit
+}
+
+/* ============================================================
+   INA219 Init Function
+   ============================================================ */
+
+void INA219_Init(void)
+{
+    printf("[INA219] Initializing...\r\n");
+
+    /* Check if sensor is present */
+    uint16_t config_read = INA219_ReadRegister(INA219_REG_CONFIG);
+    if (config_read == 0xFFFF)
+    {
+        printf("[INA219] ERROR: Sensor not found!\r\n");
+        return;
+    }
+
+    /* Calibration register */
+    INA219_WriteRegister(INA219_REG_CALIB, 4096);
+
+    /* Configuration register */
+    INA219_WriteRegister(INA219_REG_CONFIG, 0x399F);
+
+    printf("[INA219] Init complete!\r\n");
+    printf("[INA219] Address: 0x%02X\r\n", INA219_ADDR >> 1);
+    printf("[INA219] Ready for measurement\r\n\n");
+}
+
+/* ============================================================
+   INA219 Print Status
+   ============================================================ */
+
+static void INA219_PrintStatus(void)
+{
+    //char msg[2048];
+    printf("[INA219] : Voltage: %.2f V, Current: %.2f mA, Power: %.2f mW", Voltage, Current, Power);
+
+}
+
+/* ============================================================
+   INA219 FreeRTOS Task
+   ============================================================ */
+
+void INA219_Task(void *argument)
+{
+    (void)argument;
+
+    printf("[INA219] Task started!\r\n");
+
+    for (;;)
+    {
+        /* Read sensor data */
+        Voltage = INA219_GetBusVoltage();
+        Current = INA219_GetCurrent();
+        Power = INA219_GetPower();
+
+        /* Print status */
+        INA219_PrintStatus();
+
+        /* Check for overcurrent (500mA threshold) */
+        if (Current > 500.0f)
+        {
+            printf("\r\n OVERCURRENT DETECTED! Current: %.2f mA \r\n", Current);
+        }
+
+        /* Wait 1 second */
+        osDelay(1000);
+    }
+}

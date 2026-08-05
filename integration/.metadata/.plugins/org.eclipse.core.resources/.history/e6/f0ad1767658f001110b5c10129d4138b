@@ -1,0 +1,165 @@
+/*
+ * pir_sensor.c
+ *
+ *  Created on: 24-Jul-2026
+ *      Author: sunbeam
+ */
+
+#include "pir_sensor.h"
+#include <stdio.h>
+
+static uint8_t  pir_curr          = 0;
+static uint8_t  pir_prev          = 0;
+static uint8_t  zone_occupied     = 0;
+static uint32_t zone_entry_time   = 0;
+static uint32_t last_recheck_time = 0;
+static uint32_t total_events      = 0;
+
+static void pir_buzzer_beep(uint8_t count, uint32_t duration_ms)
+{
+    for (uint8_t i = 0; i < count; i++)
+    {
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+        osDelay(duration_ms);
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+        if (i < count - 1) osDelay(100);
+    }
+}
+
+
+void PIR_Init(void)
+{
+
+    HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+
+    printf("[PIR]  Init OK\r\n");
+    printf("[PIR]  Pin     : PC2 \r\n");
+    printf("[PIR]  Buzzer  : PB0\r\n");
+    printf("[PIR]  Warmup  : %lu s\r\n", PIR_WARMUP_MS / 1000);
+    printf("[PIR]  Debounce: %lu ms\r\n", PIR_DEBOUNCE_MS);
+    printf("[PIR]  Recheck : %lu min\r\n\n", PIR_RECHECK_MS / 60000);
+}
+
+
+void PIR_Task(void *argument)
+{
+    printf("[PIR]  Task started\r\n");
+    printf("[PIR]  Warming up — stand clear...\r\n\n");
+
+
+    osDelay(PIR_WARMUP_MS);
+
+    printf("[PIR]  Sensor stable — monitoring active\r\n\n");
+
+    for (;;)
+    {
+        pir_curr = HAL_GPIO_ReadPin(PIR_IN_GPIO_Port, PIR_IN_Pin);
+        uint32_t now = HAL_GetTick();
+
+
+        if (pir_curr == GPIO_PIN_SET && pir_prev == GPIO_PIN_RESET)
+        {
+
+            osDelay(PIR_DEBOUNCE_MS);
+
+            if (HAL_GPIO_ReadPin(PIR_IN_GPIO_Port, PIR_IN_Pin)
+                == GPIO_PIN_SET)
+            {
+                if (!zone_occupied)
+                {
+                    zone_occupied     = 1;
+                    zone_entry_time   = HAL_GetTick();
+                    last_recheck_time = zone_entry_time;
+                    total_events++;
+
+                    osMutexAcquire(dataMutexHandle, osWaitForever);
+                    sysData.pir.zone_occupied      = 1;
+                    sysData.pir.event_count        = total_events;
+                    sysData.pir.zone_entry_time_ms = zone_entry_time;
+                    sysData.pir.sensor_ok          = 1;
+                    sysData.timestamp_ms           = HAL_GetTick();
+                    osMutexRelease(dataMutexHandle);
+
+                    osEventFlagsSet(alertFlagsHandle,
+                                    EVT_MOTION_DETECTED);
+
+                    printf("=========================================\r\n");
+                    printf("  [!] MOTION — SERVER ROOM ENTERED\r\n");
+                    printf("=========================================\r\n");
+                    printf("  Event  : #%lu\r\n", total_events);
+                    printf("  Time   : %lu ms uptime\r\n",
+                           zone_entry_time);
+                    printf("  Status : OCCUPIED\r\n");
+                    printf("=========================================\r\n\n");
+
+                    pir_buzzer_beep(1, 100);
+                }
+            }
+            else
+            {
+                printf("[PIR]  Noise filtered (debounce)\r\n");
+            }
+        }
+
+
+        if (zone_occupied && pir_curr == GPIO_PIN_SET)
+        {
+        	uint32_t duration_minutes =
+        	(now-zone_entry_time)/60000;
+
+        	osMutexAcquire(dataMutexHandle, osWaitForever);
+
+        	sysData.pir.zone_duration_min = duration_minutes;
+
+        	osMutexRelease(dataMutexHandle);
+
+            uint32_t since_check = now - last_recheck_time;
+
+            if (since_check >= PIR_RECHECK_MS)
+            {
+                last_recheck_time = now;
+
+                printf("[PIR] Zone still occupied\r\n");
+                printf("Duration : %lu min \r\n", duration_minutes);
+
+                printf("Event    : #%lu\r\n\n", total_events);
+
+                osEventFlagsSet(alertFlagsHandle, EVT_MOTION_DETECTED);
+
+                pir_buzzer_beep(2,100);
+            }
+        }
+
+        if (pir_curr == GPIO_PIN_RESET && pir_prev == GPIO_PIN_SET)
+        {
+            if (zone_occupied)
+            {
+                zone_occupied       = 0;
+                uint32_t duration_minutes = (now - zone_entry_time) / 60000;
+
+                osMutexAcquire(dataMutexHandle, osWaitForever);
+
+                sysData.pir.zone_occupied = 0;
+                sysData.pir.zone_duration_min = duration_minutes;
+                sysData.timestamp_ms = HAL_GetTick();
+
+                osMutexRelease(dataMutexHandle);
+
+                osEventFlagsSet(alertFlagsHandle, EVT_ZONE_CLEARED);
+
+                printf("=========================================\r\n");
+                printf("  [OK] ZONE CLEARED — SECURE\r\n");
+                printf("=========================================\r\n");
+                printf("Duration : %lu minute(s)\r\n",duration_minutes);
+                printf("  Total    : %lu events\r\n", total_events);
+                printf("  Status   : SECURE\r\n");
+                printf("=========================================\r\n\n");
+            }
+        }
+
+
+        pir_prev = pir_curr;
+        osDelay(PIR_POLL_MS);
+    }
+}
+

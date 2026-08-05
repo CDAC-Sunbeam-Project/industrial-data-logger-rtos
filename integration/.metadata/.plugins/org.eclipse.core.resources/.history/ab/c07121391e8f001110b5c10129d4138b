@@ -1,0 +1,13 @@
+/*
+ * mqtt_task.h
+ *
+ *  Created on: 03-Aug-2026
+ *      Author: sunbeam
+ */
+
+#ifndef INC_MQTT_TASK_H_
+#define INC_MQTT_TASK_H_
+
+void MQTT_Task(void *argument);
+
+#endif /* INC_MQTT_TASK_H_ */

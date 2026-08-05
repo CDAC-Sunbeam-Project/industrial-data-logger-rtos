@@ -27,6 +27,7 @@
 #include "bme280_sensor.h"
 #include "mq135_sensor.h"
 #include "ina219_sensor.h"
+#include "uart_task.h"
 #include <stdio.h>
 
 
@@ -62,10 +63,11 @@ const osThreadAttr_t defaultTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* USER CODE BEGIN PV */
+///* USER CODE BEGIN PV */
 /* ── Shared resources — defined HERE, extern in shared_data.h */
 SystemData_t     sysData         = {0};
 osMutexId_t      dataMutexHandle  = NULL;
+osMutexId_t uartMutexHandle = NULL;
 osEventFlagsId_t alertFlagsHandle = NULL;
 
 /* USER CODE END PV */
@@ -76,12 +78,14 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
-void StartDefaultTask(void *argument);
+//void StartDefaultTask(void	 *argument);
 
 /* USER CODE BEGIN PFP */
 void UART_Send(char *msg)
 {
+    osMutexAcquire(uartMutexHandle, osWaitForever);
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+    osMutexRelease(uartMutexHandle);
 }
 
 /* USER CODE END PFP */
@@ -98,7 +102,15 @@ float Power = 0.0f;
 /* printf redirect to UART2 */
 int _write(int file, char *ptr, int len)
 {
-    HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, 100);
+//    if (uartMutexHandle != NULL)
+//    {
+//        osMutexAcquire(uartMutexHandle, osWaitForever);
+//    }
+//    HAL_UART_Transmit(&huart2, (uint8_t*)ptr, len, 100);
+//    if (uartMutexHandle != NULL)
+//    {
+//        osMutexRelease(uartMutexHandle);
+//    }
     return len;
 }
 
@@ -111,72 +123,73 @@ int _write(int file, char *ptr, int len)
 void Alert_Task(void *argument)
 {
     printf("[ALERT] Task started — waiting for events\r\n\n");
-//    uint32_t flags;
-//    SystemData_t snap;
-
 
     for (;;)
     {
-        /*
-         * This call BLOCKS — task sleeps here.
-         * osFlagsWaitAny = wake on ANY single flag.
-         * osWaitForever  = no timeout, sleep until flag arrives.
-         * When PIR or BME280 calls osEventFlagsSet(),
-         * this task wakes in microseconds.
-         */
-     uint32_t flags = osEventFlagsWait(
-       alertFlagsHandle,
-       EVT_MOTION_DETECTED | EVT_ZONE_CLEARED  |
-       EVT_FIRE_ALERT      | EVT_TEMP_ALERT    |
-       EVT_HUMIDITY_ALERT  | EVT_GAS_ALERT     |
-       EVT_OVERCURRENT,
-       osFlagsWaitAny,
-       osWaitForever
-);
+        uint32_t flags = osEventFlagsWait(
+            alertFlagsHandle,
+            EVT_MOTION_DETECTED |
+            EVT_ZONE_CLEARED |
+            EVT_FIRE_ALERT |
+            EVT_TEMP_ALERT |
+            EVT_HUMIDITY_ALERT |
+            EVT_GAS_ALERT |
+            EVT_OVERCURRENT,
+            osFlagsWaitAny,
+            osWaitForever);
 
-        /* Snapshot shared data — fast mutex hold */
-                osMutexAcquire(dataMutexHandle, 100);
-                SystemData_t snap = sysData;
-                osMutexRelease(dataMutexHandle);
+        osMutexAcquire(dataMutexHandle, osWaitForever);
+        SystemData_t snap = sysData;
+        osMutexRelease(dataMutexHandle);
 
-                /* Handle each flag — priority order matters */
-               
+        if (flags & EVT_MOTION_DETECTED)
+        {
+            printf("[ALERT] Motion event #%lu\r\n",
+                   snap.pir.event_count);
 
-               
-                        if (flags & EVT_MOTION_DETECTED)
-                        {
-                            printf("[ALERT] Motion event #%lu\r\n",
-                                   snap.pir.event_count);
-                            HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                              BUZZER_Pin, GPIO_PIN_SET);
-                            osDelay(100);
-                            HAL_GPIO_WritePin(BUZZER_GPIO_Port,
-                                              BUZZER_Pin, GPIO_PIN_RESET);
-                        }
-                        /* Handle Gas Alert */
-                                if (flags & EVT_GAS_ALERT)
-                                {
-                                    char msg[256];
-                                    sprintf(msg, "[ALERT] 🚨 GAS DETECTED! PPM: %.1f\r\n", snap.mq135.ppm);
-                                    UART_Send(msg);
-                                    for (int i = 0; i < 3; i++)
-                                    {
-                                        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-                                        osDelay(300);
-                                        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-                                        osDelay(200);
-                                    }
-                                }
+            HAL_GPIO_WritePin(BUZZER_GPIO_Port,
+                              BUZZER_Pin,
+                              GPIO_PIN_SET);
 
-                                /* Handle Zone Cleared */
-                                if (flags & EVT_ZONE_CLEARED)
-                                {
-                                    printf("[ALERT] Zone secure\r\n");
-                                }
-                            }
-                        }
+            osDelay(100);
 
+            HAL_GPIO_WritePin(BUZZER_GPIO_Port,
+                              BUZZER_Pin,
+                              GPIO_PIN_RESET);
+        }
 
+        if (flags & EVT_GAS_ALERT)
+        {
+            char msg[128];
+
+            sprintf(msg,
+                    "[ALERT] GAS DETECTED! PPM = %.1f\r\n",
+                    snap.mq135.ppm);
+
+            UART_Send(msg);
+
+            for (int i = 0; i < 3; i++)
+            {
+                HAL_GPIO_WritePin(BUZZER_GPIO_Port,
+                                  BUZZER_Pin,
+                                  GPIO_PIN_SET);
+
+                osDelay(300);
+
+                HAL_GPIO_WritePin(BUZZER_GPIO_Port,
+                                  BUZZER_Pin,
+                                  GPIO_PIN_RESET);
+
+                osDelay(200);
+            }
+        }
+
+        if (flags & EVT_ZONE_CLEARED)
+        {
+            printf("[ALERT] Zone secure\r\n");
+        }
+    }
+}
 
 
 
@@ -221,16 +234,14 @@ int main(void)
           HAL_Delay(1000);
           HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
 
-          printf("Buzzer test completed\r\n");
-
+          printf("INFO: Buzzer test completed\r\n");
 
   printf("\r\n");
-      printf("================================================\r\n");
-      printf("  INDUSTRIAL SERVER ROOM MONITOR\r\n");
-      printf("  STM32F407 + FreeRTOS\r\n");
-      printf("  Sensors: PIR + BME280 + MQ135 \r\n");
-      printf("  Sensors : PIR + BME280 + MQ135 + INA219 \r\n");
-      printf("================================================\r\n\n");
+  printf("INFO: ================================================\r\n");
+  printf("INFO: INDUSTRIAL SERVER ROOM MONITOR\r\n");
+  printf("INFO: STM32F407 + FreeRTOS\r\n");
+  printf("INFO: Sensors: PIR + BME280 + MQ135 + INA219\r\n");
+  printf("INFO: ================================================\r\n");
 
 
 
@@ -255,6 +266,12 @@ int main(void)
 
          /* Create shared resources */
             dataMutexHandle  = osMutexNew(NULL);
+            uartMutexHandle = osMutexNew(NULL);
+               if (uartMutexHandle == NULL)
+               {
+                   printf("[MAIN] FATAL: UART mutex creation failed\r\n");
+                   Error_Handler();
+               }
             alertFlagsHandle = osEventFlagsNew(NULL);
 
             if (dataMutexHandle == NULL || alertFlagsHandle == NULL)
@@ -296,86 +313,94 @@ int main(void)
                    &(osThreadAttr_t){
                        .name       = "PIR",
                        .priority   = osPriorityHigh,
-                       .stack_size = 512
+                       .stack_size = 1024
                    });
 
                osThreadNew(BME280_Task, NULL, &(osThreadAttr_t)
                {
             	   .name = "BME",
             	   .priority = osPriorityAboveNormal,
-				   .stack_size = 1024
+				   .stack_size = 1536
                });
 
                osThreadNew(MQ135_Task, NULL, &(osThreadAttr_t)
                {
             	   .name = "MQ135",
                    .priority = osPriorityNormal,
-              	   .stack_size = 1024
+              	   .stack_size = 1536
                 });
 
                osThreadNew(INA219_Task, NULL, &(osThreadAttr_t)
                {
             	   .name = "INA219",
             	   .priority = osPriorityNormal,
-				   .stack_size = 1024
+				   .stack_size = 1536
                });
 
 
-               printf("[MAIN] Tasks created\r\n");
-               printf("[MAIN] Starting FreeRTOS scheduler...\r\n\n");
+               osThreadNew(UART_Task, NULL, &(osThreadAttr_t)
+               {
+                   .name = "UART",
+                   .priority = osPriorityBelowNormal,
+                   .stack_size = 1536
+               });
 
+
+
+               printf("INFO: Tasks created\r\n");
+               printf("INFO: Starting FreeRTOS scheduler...\r\n");
                /* Hand control to FreeRTOS — never returns */
                osKernelStart();
 
                /* Never reached */
                   while (1) {}
-  /* USER CODE END 2 */
-
-  /* Init scheduler */
-  osKernelInitialize();
-
-  /* USER CODE BEGIN RTOS_MUTEX */
-//  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-//  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-//  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-//  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-//  /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
-
-  /* USER CODE BEGIN RTOS_EVENTS */
-//  /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-//  while (1)
-//  {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-//  }
-  /* USER CODE END 3 */
+//  /* USER CODE END 2 */
+//
+//  /* Init scheduler */
+//  osKernelInitialize();
+//
+//  /* USER CODE BEGIN RTOS_MUTEX */
+////  /* add mutexes, ... */
+//  /* USER CODE END RTOS_MUTEX */
+//
+//  /* USER CODE BEGIN RTOS_SEMAPHORES */
+////  /* add semaphores, ... */
+//  /* USER CODE END RTOS_SEMAPHORES */
+//
+//  /* USER CODE BEGIN RTOS_TIMERS */
+////  /* start timers, add new ones, ... */
+//  /* USER CODE END RTOS_TIMERS */
+//
+//  /* USER CODE BEGIN RTOS_QUEUES */
+////  /* add queues, ... */
+//  /* USER CODE END RTOS_QUEUES */
+//
+//  /* Create the thread(s) */
+//  /* creation of defaultTask */
+//  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+//
+//  /* USER CODE BEGIN RTOS_THREADS */
+////  /* add threads, ... */
+//  /* USER CODE END RTOS_THREADS */
+//
+//  /* USER CODE BEGIN RTOS_EVENTS */
+////  /* add events, ... */
+//  /* USER CODE END RTOS_EVENTS */
+//
+//  /* Start scheduler */
+//  osKernelStart();
+//
+//  /* We should never get here as control is now taken by the scheduler */
+//
+//  /* Infinite loop */
+//  /* USER CODE BEGIN WHILE */
+////  while (1)
+////  {
+//    /* USER CODE END WHILE */
+//
+//    /* USER CODE BEGIN 3 */
+////  }
+//  /* USER CODE END 3 */
 }
 
 /**
@@ -604,16 +629,18 @@ static void MX_GPIO_Init(void)
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+//void StartDefaultTask(void *argument)
+//{
+//  /* USER CODE BEGIN 5 */
+//  /* Infinite loop */
+//  for(;;)
+//  {
+//    osDelay(1);
+//}
+//  }
+
   /* USER CODE END 5 */
-}
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode
@@ -648,6 +675,8 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+	  HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+	      for (volatile uint32_t i = 0; i < 1000000; i++);
   }
   /* USER CODE END Error_Handler_Debug */
 }

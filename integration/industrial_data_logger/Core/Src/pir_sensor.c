@@ -8,7 +8,6 @@
 #include "pir_sensor.h"
 #include <stdio.h>
 
-/* ── Private variables — static = invisible outside this file */
 static uint8_t  pir_curr          = 0;
 static uint8_t  pir_prev          = 0;
 static uint8_t  zone_occupied     = 0;
@@ -16,7 +15,6 @@ static uint32_t zone_entry_time   = 0;
 static uint32_t last_recheck_time = 0;
 static uint32_t total_events      = 0;
 
-/* ── Private buzzer helper ────────────────────────────────── */
 static void pir_buzzer_beep(uint8_t count, uint32_t duration_ms)
 {
     for (uint8_t i = 0; i < count; i++)
@@ -28,55 +26,27 @@ static void pir_buzzer_beep(uint8_t count, uint32_t duration_ms)
     }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   PIR_Init
-   Called once from main() before osKernelStart()
-   GPIO already configured by CubeMX MX_GPIO_Init()
-   This function just confirms and prints status
-═══════════════════════════════════════════════════════════ */
+
 void PIR_Init(void)
 {
-    /* GPIO configured by CubeMX:
-       PC2 → GPIO_Input, Pull-down  (PIR_IN)
-       PB0 → GPIO_Output, Push-Pull (BUZZER) */
 
-    /* Ensure buzzer is OFF at boot */
     HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
 
     printf("[PIR]  Init OK\r\n");
-    printf("[PIR]  Pin     : PC2 (Pull-down)\r\n");
+    printf("[PIR]  Pin     : PC2 \r\n");
     printf("[PIR]  Buzzer  : PB0\r\n");
     printf("[PIR]  Warmup  : %lu s\r\n", PIR_WARMUP_MS / 1000);
     printf("[PIR]  Debounce: %lu ms\r\n", PIR_DEBOUNCE_MS);
     printf("[PIR]  Recheck : %lu min\r\n\n", PIR_RECHECK_MS / 60000);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   PIR_Task
-   FreeRTOS task — runs forever
-   Priority: osPriorityHigh
-   Stack: 512 bytes
 
-   Algorithm:
-   1. Wait 30s warmup (sensor stabilizes)
-   2. Poll PC2 every 50ms
-   3. Detect rising edge (LOW→HIGH) = entry
-   4. Debounce 50ms — confirm still HIGH
-   5. Write to sysData with mutex
-   6. Signal Alert task via event flag
-   7. Detect falling edge (HIGH→LOW) = exit
-   8. Re-alert every 2 min if still occupied
-═══════════════════════════════════════════════════════════ */
 void PIR_Task(void *argument)
 {
     printf("[PIR]  Task started\r\n");
     printf("[PIR]  Warming up — stand clear...\r\n\n");
 
-    /*
-     * osDelay = FreeRTOS sleep
-     * This task sleeps, other tasks run normally
-     * Zero CPU wasted during warmup
-     */
+
     osDelay(PIR_WARMUP_MS);
 
     printf("[PIR]  Sensor stable — monitoring active\r\n\n");
@@ -86,17 +56,10 @@ void PIR_Task(void *argument)
         pir_curr = HAL_GPIO_ReadPin(PIR_IN_GPIO_Port, PIR_IN_Pin);
         uint32_t now = HAL_GetTick();
 
-        /* ── RISING EDGE: LOW→HIGH = person entered ──────────
-         * This condition is true for exactly ONE iteration
-         * when the pin transitions from 0 to 1.
-         * All subsequent HIGH readings have prev=HIGH too,
-         * so this block never double-triggers.
-         ─────────────────────────────────────────────────── */
+
         if (pir_curr == GPIO_PIN_SET && pir_prev == GPIO_PIN_RESET)
         {
-            /* Debounce: wait 50ms, re-read pin
-             * Real motion: still HIGH after 50ms
-             * Electrical noise: returns to LOW within 50ms */
+
             osDelay(PIR_DEBOUNCE_MS);
 
             if (HAL_GPIO_ReadPin(PIR_IN_GPIO_Port, PIR_IN_Pin)
@@ -104,15 +67,11 @@ void PIR_Task(void *argument)
             {
                 if (!zone_occupied)
                 {
-                    /* ── Valid detection ──────────────────── */
                     zone_occupied     = 1;
                     zone_entry_time   = HAL_GetTick();
                     last_recheck_time = zone_entry_time;
                     total_events++;
 
-                    /* Write to shared struct — mutex protected
-                     * Acquire → write all fields → release
-                     * Hold for minimum time — no I2C inside mutex */
                     osMutexAcquire(dataMutexHandle, osWaitForever);
                     sysData.pir.zone_occupied      = 1;
                     sysData.pir.event_count        = total_events;
@@ -121,9 +80,6 @@ void PIR_Task(void *argument)
                     sysData.timestamp_ms           = HAL_GetTick();
                     osMutexRelease(dataMutexHandle);
 
-                    /* Signal Alert Task — wakes it instantly
-                     * Alert task has higher priority, preempts
-                     * this task immediately after this line */
                     osEventFlagsSet(alertFlagsHandle,
                                     EVT_MOTION_DETECTED);
 
@@ -141,50 +97,53 @@ void PIR_Task(void *argument)
             }
             else
             {
-                /* Returned to LOW within debounce window = noise */
                 printf("[PIR]  Noise filtered (debounce)\r\n");
             }
         }
 
-        /* ── ZONE OCCUPIED: re-alert every PIR_RECHECK_MS ───
-         * Handles: person enters and stays inside
-         * Re-triggers alert so buzzer keeps notifying
-         ─────────────────────────────────────────────────── */
+
         if (zone_occupied && pir_curr == GPIO_PIN_SET)
         {
+        	uint32_t duration_minutes = (now - zone_entry_time) / 60000;
+
+        	osMutexAcquire(dataMutexHandle, osWaitForever);
+
+        	sysData.pir.zone_entry_time_ms = zone_entry_time;
+        	sysData.pir.zone_duration_min = duration_minutes;
+
+        	osMutexRelease(dataMutexHandle);
+
             uint32_t since_check = now - last_recheck_time;
 
             if (since_check >= PIR_RECHECK_MS)
             {
                 last_recheck_time = now;
-                uint32_t duration = now - zone_entry_time;
 
-                printf("[PIR]  Zone still occupied\r\n");
-                printf("       Duration: %lu min %lu sec\r\n",
-                       duration / 60000,
-                       (duration % 60000) / 1000);
-                printf("       Event   : #%lu\r\n\n", total_events);
+                printf("[PIR] Zone still occupied\r\n");
+                printf("Duration : %lu min \r\n", duration_minutes);
+
+                printf("Event    : #%lu\r\n\n", total_events);
 
                 osEventFlagsSet(alertFlagsHandle, EVT_MOTION_DETECTED);
-                pir_buzzer_beep(2, 100);
+
+                pir_buzzer_beep(2,100);
             }
         }
 
-        /* ── FALLING EDGE: HIGH→LOW = person left ────────────
-         * Person has exited the zone.
-         * Calculate and log duration.
-         ─────────────────────────────────────────────────── */
         if (pir_curr == GPIO_PIN_RESET && pir_prev == GPIO_PIN_SET)
         {
             if (zone_occupied)
             {
                 zone_occupied       = 0;
-                uint32_t duration   = now - zone_entry_time;
+                uint32_t duration_minutes = (now - zone_entry_time) / 60000;
 
                 osMutexAcquire(dataMutexHandle, osWaitForever);
-                sysData.pir.zone_occupied    = 0;
-                sysData.pir.zone_duration_ms = duration;
-                sysData.timestamp_ms         = HAL_GetTick();
+
+                sysData.pir.zone_occupied = 0;
+                sysData.pir.zone_entry_time_ms = 0;
+                sysData.pir.zone_duration_min = duration_minutes;
+                sysData.timestamp_ms = HAL_GetTick();
+
                 osMutexRelease(dataMutexHandle);
 
                 osEventFlagsSet(alertFlagsHandle, EVT_ZONE_CLEARED);
@@ -192,17 +151,14 @@ void PIR_Task(void *argument)
                 printf("=========================================\r\n");
                 printf("  [OK] ZONE CLEARED — SECURE\r\n");
                 printf("=========================================\r\n");
-                printf("  Duration : %lu min %lu sec\r\n",
-                       duration / 60000,
-                       (duration % 60000) / 1000);
+                printf("Duration : %lu minute(s)\r\n",duration_minutes);
                 printf("  Total    : %lu events\r\n", total_events);
                 printf("  Status   : SECURE\r\n");
                 printf("=========================================\r\n\n");
             }
         }
 
-        /* Update previous state — MUST be at bottom of loop
-         * outside all if-blocks */
+
         pir_prev = pir_curr;
         osDelay(PIR_POLL_MS);
     }

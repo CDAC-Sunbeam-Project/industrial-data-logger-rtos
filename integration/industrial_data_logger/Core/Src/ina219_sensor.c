@@ -11,6 +11,7 @@
 #include "main.h"
 #include <stdint.h>
 #include "cmsis_os.h"
+#include<shared_data.h>
 
 
 /* External references */
@@ -129,7 +130,15 @@ void INA219_Task(void *argument)
         /* Read sensor data */
         Voltage = INA219_GetBusVoltage();
         Current = INA219_GetCurrent();
-        Power = INA219_GetPower();
+        Power   = INA219_GetPower();
+
+        /* Write into shared struct so UART_Task can see it */
+        osMutexAcquire(dataMutexHandle, osWaitForever);
+        sysData.ina.voltage_V = Voltage;
+        sysData.ina.current_A = Current / 1000.0f;  // Current is in mA, struct expects A — adjust if needed
+        sysData.ina.power_W   = Power / 1000.0f;     // Power is in mW, struct expects W — adjust if needed
+        sysData.ina.sensor_ok = 1;
+        osMutexRelease(dataMutexHandle);
 
         /* Print status */
         INA219_PrintStatus();
@@ -138,9 +147,14 @@ void INA219_Task(void *argument)
         if (Current > 500.0f)
         {
             printf("\r\n OVERCURRENT DETECTED! Current: %.2f mA \r\n", Current);
+
+            osMutexAcquire(dataMutexHandle, osWaitForever);
+            sysData.ina.overcurrent_alert = 1;
+            osMutexRelease(dataMutexHandle);
+
+            osEventFlagsSet(alertFlagsHandle, EVT_OVERCURRENT);
         }
 
-        /* Wait 1 second */
         osDelay(1000);
     }
 }

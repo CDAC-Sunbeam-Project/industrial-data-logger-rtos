@@ -1,0 +1,53 @@
+/*
+ * uart_task.c
+ *
+ *  Created on: 03-Aug-2026
+ *      Author: sunbeam
+ */
+
+
+#include "uart_task.h"
+#include "shared_data.h"
+#include "main.h"
+#include "cmsis_os.h"
+#include <stdio.h>
+#include <string.h>
+
+extern UART_HandleTypeDef huart2;
+
+void UART_Task(void *argument)
+{
+    char txBuffer[200];
+    SystemData_t snap;
+
+    while (1)
+    {
+        osMutexAcquire(dataMutexHandle, osWaitForever);
+
+        snap = sysData;
+
+        osMutexRelease(dataMutexHandle);
+
+        sprintf(txBuffer,
+            "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%lu\r\n",
+
+            snap.bme.temperature,
+            snap.bme.humidity,
+            snap.bme.pressure,
+
+            snap.mq135.ppm,
+
+            snap.ina219.voltage,
+            snap.ina219.current,
+
+            snap.pir.motion_detected);
+
+        HAL_UART_Transmit(
+            &huart2,
+            (uint8_t*)txBuffer,
+            strlen(txBuffer),
+            HAL_MAX_DELAY);
+
+        osDelay(2000);
+    }
+}

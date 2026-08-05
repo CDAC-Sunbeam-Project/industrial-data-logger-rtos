@@ -16,7 +16,7 @@ typedef struct {
     uint8_t  zone_occupied;
     uint32_t event_count;
     uint32_t zone_entry_time_ms;
-    uint32_t zone_duration_ms;
+    uint32_t zone_duration_min;
     uint8_t  sensor_ok;
 } PIR_Data_t;
 
@@ -70,6 +70,7 @@ typedef struct {
 /* ── Extern — defined once in main.c ─────────────────────── */
 extern SystemData_t      sysData;
 extern osMutexId_t       dataMutexHandle;
+extern osMutexId_t       uartMutexHandle;
 extern osEventFlagsId_t  alertFlagsHandle;
 
 /* ── Event Flags ──────────────────────────────────────────── */
